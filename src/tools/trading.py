@@ -5,6 +5,8 @@ import json
 from mcp.server.fastmcp import FastMCP
 
 from src.auth import get_client
+from src.evaluation import evaluator
+from src.paper_engine import engine
 from src.safety import guard
 
 
@@ -80,13 +82,14 @@ def register_trading_tools(mcp: FastMCP):
         segment: str = "CASH",
         product: str = "CNC",
         amo: bool = False,
+        strategy: str = "",
+        indicators: str = "",
     ) -> str:
         """Place a buy or sell order on the Groww platform.
 
-        Orders placed outside market hours (9:15 AM - 3:30 PM IST) are
-        automatically treated as AMO (After Market Orders) by Groww.
-        Set amo=True to explicitly place an after-market order — this
-        bypasses the market hours safety check.
+        In paper mode, the order executes against a virtual portfolio with
+        real market prices. Tag your trades with a strategy name for
+        performance tracking.
 
         Args:
             trading_symbol: The stock/instrument symbol (e.g., "WIPRO").
@@ -98,7 +101,9 @@ def register_trading_tools(mcp: FastMCP):
             exchange: "NSE" or "BSE".
             segment: "CASH" or "FNO".
             product: "CNC" (Cash and Carry), "MIS" (Intraday), or "NRML" (Normal).
-            amo: Set to true to place an After Market Order (executes at next market open).
+            amo: Set to true to place an After Market Order.
+            strategy: Strategy name for evaluation tracking (e.g., "RSI_OVERSOLD", "MACD_CROSSOVER").
+            indicators: JSON string of indicator values at time of trade (e.g., '{"RSI": 28.5}').
 
         Returns:
             JSON string with order details or error message.
@@ -112,18 +117,37 @@ def register_trading_tools(mcp: FastMCP):
                 return json.dumps({"error": message})
 
             if guard.is_paper_mode():
-                return json.dumps(
-                    {
-                        "mode": "PAPER",
-                        "trading_symbol": trading_symbol,
-                        "quantity": quantity,
-                        "estimated_price": estimated_price,
-                        "order_type": order_type,
-                        "transaction_type": transaction_type,
-                        "amo": amo,
-                        "status": "SIMULATED",
-                    }
+                indicators_dict = {}
+                if indicators:
+                    try:
+                        indicators_dict = json.loads(indicators)
+                    except json.JSONDecodeError:
+                        pass
+
+                result = engine.execute_order(
+                    symbol=trading_symbol.upper(),
+                    quantity=quantity,
+                    transaction_type=transaction_type.upper(),
+                    order_type=order_type.upper(),
+                    price=price,
+                    exchange=exchange.upper(),
+                    strategy=strategy,
+                    indicators=indicators_dict,
                 )
+
+                if "error" not in result:
+                    evaluator.log_trade({
+                        "paper_order_id": result.get("paper_order_id"),
+                        "symbol": trading_symbol.upper(),
+                        "action": transaction_type.upper(),
+                        "quantity": quantity,
+                        "fill_price": result.get("fill_price", 0),
+                        "strategy": strategy,
+                        "indicators": indicators_dict,
+                        "timestamp": result.get("timestamp", ""),
+                    })
+
+                return json.dumps(result, indent=2, default=str)
 
             groww = get_client()
             response = groww.place_order(
@@ -166,6 +190,9 @@ def register_trading_tools(mcp: FastMCP):
             JSON string with modified order details or error message.
         """
         try:
+            if guard.is_paper_mode():
+                return json.dumps({"error": "Paper orders execute immediately and cannot be modified"})
+
             groww = get_client()
             response = groww.modify_order(
                 quantity=quantity,
@@ -194,6 +221,10 @@ def register_trading_tools(mcp: FastMCP):
             JSON string with cancellation details or error message.
         """
         try:
+            if guard.is_paper_mode():
+                result = engine.cancel_order(groww_order_id)
+                return json.dumps(result)
+
             groww = get_client()
             response = groww.cancel_order(
                 segment=_map_segment(groww, segment),

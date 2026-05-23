@@ -23,14 +23,24 @@ def trading_tools(patch_get_client):
 
 @pytest.mark.asyncio
 async def test_place_order_paper_mode(trading_tools, mock_groww_client):
-    """Paper mode returns SIMULATED status without calling the real API."""
+    """Paper mode executes against paper engine, not the real API."""
     with patch("src.tools.trading.guard.is_paper_mode", return_value=True), \
-         patch("src.tools.trading.guard.validate_order", return_value=(True, "")):
+         patch("src.tools.trading.guard.validate_order", return_value=(True, "")), \
+         patch("src.tools.trading.engine.execute_order", return_value={
+             "paper_order_id": "PAPER_0001",
+             "trading_symbol": "RELIANCE",
+             "fill_price": 1350.0,
+             "order_value": 1350.0,
+             "status": "EXECUTED",
+             "strategy": "",
+             "timestamp": "2026-05-23T10:00:00+05:30",
+         }), \
+         patch("src.tools.trading.evaluator.log_trade"):
         result = await trading_tools["place_order"]("RELIANCE", 1, "BUY")
 
     data = json.loads(result)
-    assert data["mode"] == "PAPER"
-    assert data["status"] == "SIMULATED"
+    assert data["status"] == "EXECUTED"
+    assert data["paper_order_id"] == "PAPER_0001"
     mock_groww_client.place_order.assert_not_called()
 
 
