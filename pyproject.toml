@@ -1,0 +1,22 @@
+[project]
+name = "groww-mcp"
+version = "0.1.0"
+description = "MCP server for Groww algo trading via Claude"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.0.0",
+    "growwapi>=1.1.0",
+    "pyotp>=2.9.0",
+    "pandas>=2.0.0",
+    "pandas-ta>=0.3.14b1",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+groww-mcp = "src.server:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
