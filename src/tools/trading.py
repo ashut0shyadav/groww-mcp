@@ -24,7 +24,11 @@ def _map_segment(groww, segment: str):
 
 def _map_product(groww, product: str):
     """Map product string to SDK constant."""
-    return {"CNC": groww.PRODUCT_CNC}.get(product, groww.PRODUCT_CNC)
+    return {
+        "CNC": groww.PRODUCT_CNC,
+        "MIS": groww.PRODUCT_MIS,
+        "NRML": groww.PRODUCT_NRML,
+    }.get(product, groww.PRODUCT_CNC)
 
 
 def _map_order_type(groww, order_type: str):
@@ -75,8 +79,14 @@ def register_trading_tools(mcp: FastMCP):
         exchange: str = "NSE",
         segment: str = "CASH",
         product: str = "CNC",
+        amo: bool = False,
     ) -> str:
         """Place a buy or sell order on the Groww platform.
+
+        Orders placed outside market hours (9:15 AM - 3:30 PM IST) are
+        automatically treated as AMO (After Market Orders) by Groww.
+        Set amo=True to explicitly place an after-market order — this
+        bypasses the market hours safety check.
 
         Args:
             trading_symbol: The stock/instrument symbol (e.g., "WIPRO").
@@ -87,7 +97,8 @@ def register_trading_tools(mcp: FastMCP):
             trigger_price: Trigger price for stop-loss orders.
             exchange: "NSE" or "BSE".
             segment: "CASH" or "FNO".
-            product: "CNC" (Cash and Carry).
+            product: "CNC" (Cash and Carry), "MIS" (Intraday), or "NRML" (Normal).
+            amo: Set to true to place an After Market Order (executes at next market open).
 
         Returns:
             JSON string with order details or error message.
@@ -95,7 +106,7 @@ def register_trading_tools(mcp: FastMCP):
         try:
             estimated_price = _estimate_price(trading_symbol, price, exchange)
             allowed, message = guard.validate_order(
-                trading_symbol, quantity, estimated_price, segment, transaction_type
+                trading_symbol, quantity, estimated_price, segment, transaction_type, amo=amo
             )
             if not allowed:
                 return json.dumps({"error": message})
@@ -109,6 +120,7 @@ def register_trading_tools(mcp: FastMCP):
                         "estimated_price": estimated_price,
                         "order_type": order_type,
                         "transaction_type": transaction_type,
+                        "amo": amo,
                         "status": "SIMULATED",
                     }
                 )

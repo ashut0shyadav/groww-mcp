@@ -23,6 +23,7 @@ class SafetyGuard:
         price: float,
         segment: str,
         transaction_type: str,
+        amo: bool = False,
     ) -> tuple[bool, str]:
         """Validate an order against safety rules.
 
@@ -44,14 +45,15 @@ class SafetyGuard:
         if current_spend + value > MAX_DAILY_SPEND:
             return False, f"Daily spend limit ₹{MAX_DAILY_SPEND} would be exceeded"
 
-        # Check market hours (weekdays 9:15 - 15:30 IST)
-        now = datetime.now(IST)
-        if now.weekday() >= 5:
-            return False, "Market is closed"
-        market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
-        market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-        if not (market_open <= now <= market_close):
-            return False, "Market is closed"
+        # Check market hours (weekdays 9:15 - 15:30 IST) — skip for AMO orders
+        if not amo:
+            now = datetime.now(IST)
+            if now.weekday() >= 5:
+                return False, "Market is closed"
+            market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+            market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+            if not (market_open <= now <= market_close):
+                return False, "Market is closed"
 
         return True, ""
 
